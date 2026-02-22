@@ -1,0 +1,113 @@
+| Environment | Purpose         |
+| ----------- | --------------- |
+| dev         | automatic       |
+| stage       | validation      |
+| prod        | manual approval |
+
+
+here two type of screts or variables will be there one is repositry level and one is envirolmental level for example ips or passwors belongs to specic envirolmental
+step by step to craete:
+envirolmental : setting envirolment -> craete 
+repositry level: setting-->actions ->new screct 
+
+ci respnose:
+checkout
+test
+built
+craete docker image
+push image registry
+
+name: Enterprise CI Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+
+# ===================================
+# INTEGRATION TEST JOB
+# ===================================
+  integration-test:
+
+    runs-on: ubuntu-latest
+
+    # JOB CONTAINER
+    container:
+      image: python:3.12
+
+    # SERVICE CONTAINERS
+    services:
+
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Integration Tests
+        id: test
+        run: python app/app.py
+
+      - name: Upload Test Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-report
+          path: output.txt
+
+
+# ===================================
+# DOCKER BUILD JOB
+# ===================================
+  docker-build:
+
+    needs: integration-test
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Generate Image Tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKER_PASS }}" |
+             docker login -u ${{ secrets.DOCKER_USER }} --password-stdin
+
+      - name: Build Docker Image
+        run: docker build -t enterprise:${{ steps.meta.outputs.tag }} .
+
+      - name: Tag Image
+        run: |
+          docker tag enterprise:${{ steps.meta.outputs.tag }} \
+          ${{ secrets.DOCKER_USER }}/enterprise-app:${{ steps.meta.outputs.tag }}
+
+      - name: Push Image
+        run: docker push \
+          ${{ secrets.DOCKER_USER }}/enterprise-app:${{ steps.meta.outputs.tag }}
