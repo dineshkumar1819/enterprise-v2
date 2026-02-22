@@ -3,6 +3,7 @@ name: ci-phase1
 on:
   push:
     branches:
+      - master
       - main
 
 jobs:
