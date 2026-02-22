@@ -7,13 +7,11 @@ on:
 
 jobs:
 
-# ======================
-# CI TEST JOB
-# ======================
+  # ======================
+  # CI TEST JOB
+  # ======================
   CI:
-
     runs-on: ubuntu-latest
-
     container:
       image: python:3.12
 
@@ -25,47 +23,49 @@ jobs:
           POSTGRES_DB: testdb
         ports:
           - 5432:5432
-
       redis:
         image: redis:7
         ports:
           - 6379:6379
 
     steps:
-      - name: checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: install_dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: run_app
+      - name: Run tests
         run: python app/app.py
 
-      - name: upload_artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: outputfile
           path: output.txt
 
-
-# ======================
-# BUILD IMAGE JOB
-# ======================
+  # ======================
+  # BUILD & PUSH JOB
+  # ======================
   build:
-
     needs: CI
     runs-on: ubuntu-latest
 
     steps:
-      - name: checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: docker_login
-        run: echo "${{ secrets.DOCKER_PASS }}" |
-             docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+      - name: Set image tag (7-char SHA)
+        run: echo "TAG=$(echo ${GITHUB_SHA} | cut -c1-7)" >> $GITHUB_ENV
 
-      - name: docker_build
-        run: docker build -t ${{ secrets.DOCKER_USER }}/myapp:latest .
+      - name: Login to Docker Hub
+        run: |
+          echo "${{ secrets.DOCKER_PASS }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
 
-      - name: docker_push
-        run: docker push ${{ secrets.DOCKER_USER }}/myapp:latest
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USER }}/myapp:${{ env.TAG }} .
+
+      - name: Push image to Docker Hub
+        run: |
+          docker push ${{ secrets.DOCKER_USER }}/myapp:${{ env.TAG }}   
